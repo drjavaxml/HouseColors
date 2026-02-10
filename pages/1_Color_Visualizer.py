@@ -1,5 +1,6 @@
 import streamlit as st
 from PIL import Image, ImageDraw
+import numpy as np
 import io
 from streamlit_image_coordinates import streamlit_image_coordinates
 from lib.house_svg import house_svg, SECTIONS, DEFAULT_COLORS
@@ -102,20 +103,60 @@ else:
             st.session_state.photo_pending = []     # closed but unfilled polygons
         if "photo_last_click" not in st.session_state:
             st.session_state.photo_last_click = None  # track processed clicks
+        if "photo_sampled_color" not in st.session_state:
+            st.session_state.photo_sampled_color = None  # RGB tuple for color replace
 
         # Build composited image from applied fills
         def _composite(img):
             result = img.copy()
             overlay = Image.new("RGBA", result.size, (0, 0, 0, 0))
             draw = ImageDraw.Draw(overlay)
+            base_arr = np.array(img)[:, :, :3].astype(np.float64)
+            overlay_arr = np.array(overlay)
             for fill in st.session_state.photo_fills:
-                draw.polygon(fill["pts"], fill=tuple(fill["rgba"]))
+                if fill.get("type") == "color_replace":
+                    sampled = np.array(fill["sampled_rgb"], dtype=np.float64)
+                    diff = base_arr - sampled
+                    dist = np.sqrt(np.sum(diff ** 2, axis=2))
+                    mask = dist <= fill["tolerance"]
+                    r, g, b, a = fill["rgba"]
+                    overlay_arr[mask] = [r, g, b, a]
+                else:
+                    draw.polygon(fill["pts"], fill=tuple(fill["rgba"]))
+            overlay = Image.fromarray(overlay_arr, "RGBA")
             return Image.alpha_composite(result, overlay)
 
         # Draw pending polygons and current points as markers
         def _draw_guides(img):
             display = img.copy()
             draw = ImageDraw.Draw(display)
+
+            tool = st.session_state.get("photo_tool", "Polygon")
+
+            # Color replace preview highlight
+            if (tool == "Color Replace"
+                    and st.session_state.photo_sampled_color is not None):
+                tol = st.session_state.get("photo_tolerance", 30)
+                sampled = np.array(st.session_state.photo_sampled_color,
+                                   dtype=np.float64)
+                base_arr = np.array(base_img)[:, :, :3].astype(np.float64)
+                diff = base_arr - sampled
+                dist = np.sqrt(np.sum(diff ** 2, axis=2))
+                mask = dist <= tol
+                # Semi-transparent highlight overlay
+                highlight = Image.new("RGBA", display.size, (0, 0, 0, 0))
+                h_arr = np.array(highlight)
+                if fill_color:
+                    r_h = int(fill_color[1:3], 16)
+                    g_h = int(fill_color[3:5], 16)
+                    b_h = int(fill_color[5:7], 16)
+                else:
+                    r_h, g_h, b_h = 255, 0, 255
+                h_arr[mask] = [r_h, g_h, b_h, 100]
+                highlight = Image.fromarray(h_arr, "RGBA")
+                display = Image.alpha_composite(display, highlight)
+                draw = ImageDraw.Draw(display)
+
             # Draw closed pending polygons as outlines
             for poly in st.session_state.photo_pending:
                 pts = [tuple(p) for p in poly]
@@ -132,10 +173,6 @@ else:
                     draw.line([tuple(st.session_state.photo_points[i - 1]),
                                (x, y)], fill="red", width=2)
             return display
-
-        composited = _composite(base_img)
-        display_img = _draw_guides(composited)
-        display_rgb = display_img.convert("RGB")
 
         # Load saved palettes from Palette Builder
         saved_palettes = load_json("palettes.json", default={"palettes": []})
@@ -205,16 +242,51 @@ else:
             st.markdown("---")
             opacity = st.slider("Opacity", 0, 255, 120, key="photo_opacity")
 
+            st.markdown("---")
+            st.subheader("Tool")
+            st.radio("Tool", ["Polygon", "Color Replace"],
+                     key="photo_tool", horizontal=True)
+
+            tool = st.session_state.get("photo_tool", "Polygon")
+
             n_pts = len(st.session_state.photo_points)
             n_pending = len(st.session_state.photo_pending)
-            st.caption(f"Current points: {n_pts} | Pending polygons: {n_pending}")
 
-            close_poly_btn = st.button("Close Polygon", disabled=(n_pts < 3))
-            fill_btn = st.button("Fill All Polygons", disabled=(n_pending == 0))
-            st.markdown("---")
-            clear_pts_btn = st.button("Clear Current Points")
-            clear_pending_btn = st.button("Clear Pending Polygons",
-                                          disabled=(n_pending == 0))
+            if tool == "Polygon":
+                st.caption(f"Current points: {n_pts} | Pending polygons: {n_pending}")
+
+                close_poly_btn = st.button("Close Polygon", disabled=(n_pts < 3))
+                fill_btn = st.button("Fill All Polygons",
+                                     disabled=(n_pending == 0))
+                st.markdown("---")
+                clear_pts_btn = st.button("Clear Current Points")
+                clear_pending_btn = st.button("Clear Pending Polygons",
+                                              disabled=(n_pending == 0))
+            else:
+                close_poly_btn = False
+                fill_btn = False
+                clear_pts_btn = False
+                clear_pending_btn = False
+
+                st.slider("Tolerance", 0, 100, 30, key="photo_tolerance")
+                sampled = st.session_state.photo_sampled_color
+                if sampled is not None:
+                    r_s, g_s, b_s = sampled
+                    hex_s = f"#{r_s:02x}{g_s:02x}{b_s:02x}"
+                    st.markdown(
+                        f'Sampled: <span style="display:inline-block;width:20px;'
+                        f'height:20px;background:{hex_s};border:1px solid #ccc;'
+                        f'vertical-align:middle;border-radius:3px;"></span> '
+                        f'`{hex_s}`',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.caption("Click on the image to sample a color.")
+
+                apply_cr_btn = st.button("Apply Color Replace",
+                                         disabled=(sampled is None))
+                clear_sample_btn = st.button("Clear Sample")
+
             undo_btn = st.button("Undo Last Fill")
 
             # Save / Load polygon sets
@@ -253,12 +325,22 @@ else:
                 load_work_btn = False
                 delete_work_btn = False
 
+        composited = _composite(base_img)
+        display_img = _draw_guides(composited)
+        display_rgb = display_img.convert("RGB")
+
         # Clickable image
-        st.info(
-            "Click to place vertices. 'Close Polygon' to finish a shape "
-            "(shown in yellow). Draw more polygons, then 'Fill All Polygons' "
-            "to apply the color."
-        )
+        if tool == "Color Replace":
+            st.info(
+                "Click on the image to sample a color. Adjust tolerance to "
+                "expand/shrink the match area, then click 'Apply Color Replace'."
+            )
+        else:
+            st.info(
+                "Click to place vertices. 'Close Polygon' to finish a shape "
+                "(shown in yellow). Draw more polygons, then 'Fill All Polygons' "
+                "to apply the color."
+            )
         coords = streamlit_image_coordinates(display_rgb, key="photo_click")
 
         # Handle new click — only process if it's genuinely new
@@ -266,7 +348,30 @@ else:
             click_key = (coords["x"], coords["y"])
             if click_key != st.session_state.photo_last_click:
                 st.session_state.photo_last_click = click_key
-                st.session_state.photo_points.append(list(click_key))
+                if tool == "Color Replace":
+                    # Sample pixel color from base image
+                    px = base_img.getpixel((coords["x"], coords["y"]))
+                    st.session_state.photo_sampled_color = (px[0], px[1], px[2])
+                else:
+                    st.session_state.photo_points.append(list(click_key))
+                st.rerun()
+
+        # Apply Color Replace
+        if tool == "Color Replace":
+            if apply_cr_btn and st.session_state.photo_sampled_color is not None:
+                r_c = int(fill_color[1:3], 16) if fill_color else 0
+                g_c = int(fill_color[3:5], 16) if fill_color else 0
+                b_c = int(fill_color[5:7], 16) if fill_color else 0
+                st.session_state.photo_fills.append({
+                    "type": "color_replace",
+                    "sampled_rgb": list(st.session_state.photo_sampled_color),
+                    "tolerance": st.session_state.get("photo_tolerance", 30),
+                    "rgba": [r_c, g_c, b_c, opacity],
+                })
+                st.session_state.photo_sampled_color = None
+                st.rerun()
+            if clear_sample_btn:
+                st.session_state.photo_sampled_color = None
                 st.rerun()
 
         # Close current polygon → move to pending, keep last_click to prevent ghost point
@@ -300,10 +405,11 @@ else:
             st.session_state.photo_last_click = None
             st.rerun()
 
-        # Undo last applied fill — restore its polygons back to pending
+        # Undo last applied fill — restore polygons back to pending (or just remove color_replace)
         if undo_btn and st.session_state.photo_fills:
             last_fill = st.session_state.photo_fills.pop()
-            st.session_state.photo_pending.append(last_fill["pts"])
+            if last_fill.get("type") != "color_replace":
+                st.session_state.photo_pending.append(last_fill["pts"])
             st.rerun()
 
         # Save polygon set
