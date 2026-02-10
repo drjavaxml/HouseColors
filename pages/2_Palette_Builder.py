@@ -45,12 +45,16 @@ for idx, color in enumerate(colors_list):
             f'{color.get("code", "")} &nbsp; `{color["hex"]}`',
             unsafe_allow_html=True,
         )
-        if st.button("Add", key=f"add_{selected_brand}_{idx}"):
+        cur_len = len(st.session_state.get("current_palette", []))
+        if st.button("Add", key=f"add_{selected_brand}_{idx}",
+                      disabled=(cur_len >= 20)):
             if "current_palette" not in st.session_state:
                 st.session_state.current_palette = []
-            st.session_state.current_palette.append(
-                {"name": color["name"], "hex": color["hex"], "brand": selected_brand}
-            )
+            if len(st.session_state.current_palette) < 20:
+                st.session_state.current_palette.append(
+                    {"name": color["name"], "hex": color["hex"],
+                     "brand": selected_brand}
+                )
 
 # ── Search across all brands ──
 st.subheader("Search All Brands")
@@ -84,19 +88,23 @@ st.markdown("---")
 st.subheader("Current Palette")
 current = st.session_state.get("current_palette", [])
 if not current:
-    st.info("Add colors from above to start building a palette.")
+    st.info("Add colors from above to start building a palette (up to 20).")
 else:
-    cols = st.columns(len(current))
-    for i, c in enumerate(current):
-        with cols[i]:
-            st.markdown(
-                f'{color_swatch_html(c["hex"], 50)}<br>**{c["name"]}**',
-                unsafe_allow_html=True,
-            )
-            if st.button("\u2716", key=f"rm_{i}"):
-                current.pop(i)
-                st.session_state.current_palette = current
-                st.rerun()
+    PER_ROW = 5
+    for row_start in range(0, len(current), PER_ROW):
+        row_items = current[row_start:row_start + PER_ROW]
+        cols = st.columns(PER_ROW)
+        for j, c in enumerate(row_items):
+            i = row_start + j
+            with cols[j]:
+                st.markdown(
+                    f'{color_swatch_html(c["hex"], 50)}<br>**{c["name"]}**',
+                    unsafe_allow_html=True,
+                )
+                if st.button("\u2716", key=f"rm_{i}"):
+                    current.pop(i)
+                    st.session_state.current_palette = current
+                    st.rerun()
 
     # Color suggestions
     if current:
