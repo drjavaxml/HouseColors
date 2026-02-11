@@ -1,0 +1,172 @@
+HouseColors User Manual
+=======================
+
+HouseColors is a browser-based tool for visualizing paint colors on
+photos of your house and building custom color palettes from real
+paint brands.
+
+To start the app, run:  streamlit run app.py
+Then open the URL shown in your terminal (usually http://localhost:8501).
+
+Use the sidebar to switch between pages.
+
+
+========================================================================
+PAGE 1: COLOR VISUALIZER
+========================================================================
+
+Upload a photo of your house, then recolor surfaces using one of two
+tools: Color Replace (default) or Polygon.
+
+GETTING STARTED
+---------------
+- Open the Color Visualizer page from the sidebar.
+- Upload a house photo (PNG, JPG, or JPEG) using the file uploader.
+- Or, if you have a saved session, select it from the dropdown and
+  click "Load Session" to pick up where you left off.
+- The image is cached in memory, so you can navigate to other pages
+  and come back without losing it.
+
+CHOOSING A FILL COLOR
+---------------------
+The sidebar has several ways to pick a fill color:
+
+1. Load a palette: If you built palettes in the Palette Builder,
+   select one and click "Load Palette". Then pick a color from the
+   radio list. Swatches are shown below.
+
+2. Custom color: Use the color picker under "Custom color" and check
+   "Use custom color instead" to override the palette selection.
+
+3. Opacity: The opacity slider (0-255) controls how transparent the
+   fill is. Lower values let more of the original photo show through.
+
+TOOL: COLOR REPLACE (default)
+------------------------------
+Best for large uniform surfaces like siding, doors, and shutters.
+
+1. Click anywhere on the photo to sample a color. The sampled color
+   appears as a swatch in the sidebar.
+2. Adjust the Tolerance slider (0-100, default 30). This controls how
+   closely a pixel must match the sampled color to be included.
+   Tolerance is measured as Euclidean distance in RGB color space.
+   Higher values = more pixels matched. Lower = stricter matching.
+3. A semi-transparent preview highlights all matching pixels on the
+   photo so you can see exactly what will change.
+4. Choose your replacement color from the palette or custom picker.
+5. Click "Apply Color Replace" to commit the change.
+6. Click "Clear Sample" to discard the sample without applying.
+
+TOOL: POLYGON
+--------------
+Best for precise areas with irregular shapes.
+
+1. Switch to "Polygon" using the Tool radio in the sidebar.
+2. Click on the photo to place vertices. Each click adds a red dot
+   connected by red lines.
+3. Click "Close Polygon" (requires 3+ points) to finish the shape.
+   It turns yellow, indicating it is pending.
+4. You can draw multiple polygons before filling them.
+5. Click "Fill All Polygons" to apply the selected color to all
+   pending polygons at once.
+6. "Clear Current Points" discards the in-progress polygon.
+7. "Clear Pending Polygons" discards all yellow outlines.
+
+UNDO
+----
+Click "Undo Last Fill" to remove the most recent fill. For polygon
+fills, the polygons are restored to pending state. For color replace
+fills, the replacement is simply removed.
+
+SAVE / LOAD POLYGON SETS
+--------------------------
+- Enter a name and click "Save Polygons" to save your current pending
+  polygons for reuse (e.g., to apply different colors later).
+- Load or delete saved polygon sets from the dropdowns.
+
+SAVE / LOAD WORK (SESSIONS)
+-----------------------------
+- Enter a session name and click "Save Current Work" to save
+  everything: the photo, all applied fills, pending polygons, and
+  in-progress points.
+- Sessions are saved to photo_work.json and persist across app
+  restarts.
+- Load a session from the sidebar dropdown, or from the quick-load
+  option shown before uploading a photo.
+- Delete sessions you no longer need.
+
+DOWNLOAD
+--------
+Click "Download PNG" at the bottom to save the composited result
+(original photo with all color fills applied) as a PNG file.
+
+
+========================================================================
+PAGE 2: PALETTE BUILDER
+========================================================================
+
+Build custom color palettes from paint brand catalogs or your own
+custom colors. Palettes can hold up to 20 colors.
+
+BROWSE BRAND COLORS
+--------------------
+1. Select a paint brand from the dropdown.
+2. Optionally filter by name using the text input.
+3. Colors are displayed in a grid with swatches, names, codes, and
+   hex values.
+4. Click "Add" to add a color to your current palette.
+
+SEARCH ALL BRANDS
+-----------------
+Type a color name to search across all loaded paint brands at once.
+Results show the color name, brand, and hex value.
+
+MATCH A CUSTOM COLOR
+---------------------
+Pick any color with the color picker to find the 8 closest matching
+paint colors across all brands. Useful for finding a real paint that
+matches an inspiration color.
+
+ADD CUSTOM COLOR
+-----------------
+1. Use the color picker to choose a color (or paste a hex code).
+2. Enter a name for the color.
+3. Click "Add to Palette" to add it to your current palette.
+   If no name is entered, the hex code is used as the name.
+
+CURRENT PALETTE
+----------------
+Your working palette is displayed as a grid of swatches (5 per row).
+- Click the X button under a color to remove it.
+- Color suggestions (complementary and triadic) are shown based on
+  your first palette color.
+
+SAVING PALETTES
+----------------
+1. Enter a palette name in the text input.
+2. Click "Save Palette" to save it permanently.
+3. Saved palettes appear in the sidebar and can be loaded in the
+   Color Visualizer.
+4. Delete saved palettes from the sidebar expanders.
+
+
+========================================================================
+TIPS
+========================================================================
+
+- Build your palette first in the Palette Builder, then switch to the
+  Color Visualizer to apply those colors to your photo.
+
+- For best results with Color Replace, click on the most representative
+  area of the surface you want to recolor, then adjust tolerance until
+  the highlight covers the desired area without bleeding into other
+  surfaces.
+
+- Save your work frequently. Sessions include the photo, so you can
+  close the app and resume later.
+
+- You can apply multiple color replacements and polygon fills to the
+  same photo. They layer on top of each other in order.
+
+- Use lower opacity values (60-120) for a more natural, translucent
+  look. Use higher values (180-255) for solid coverage.
