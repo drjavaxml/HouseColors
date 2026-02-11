@@ -10,7 +10,7 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 st.title("\U0001f3e0 HouseColors")
-st.markdown("Your all-in-one tool for house color visualization, palette building, and paint tracking.")
+st.markdown("Your tool for house color visualization and palette building.")
 
 st.markdown("---")
 
@@ -18,7 +18,7 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("\U0001f3a8 Color Visualizer")
-    st.write("Apply colors to a house template or your own photo and download the result.")
+    st.write("Upload a house photo, recolor surfaces with polygons or color replace, and download the result.")
 
 with col2:
     st.subheader("\U0001f308 Palette Builder")
