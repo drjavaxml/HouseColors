@@ -2,6 +2,7 @@ import streamlit as st
 from PIL import Image, ImageDraw
 import numpy as np
 import io
+import base64
 from streamlit_image_coordinates import streamlit_image_coordinates
 from lib.house_svg import house_svg, SECTIONS, DEFAULT_COLORS
 from lib.persistence import load_json, save_json
@@ -84,27 +85,61 @@ if mode == "House Template":
 else:
     # ── Upload photo mode ──
     st.subheader("Upload a House Photo")
+
+    # Session state defaults
+    if "photo_fills" not in st.session_state:
+        st.session_state.photo_fills = []
+    if "photo_points" not in st.session_state:
+        st.session_state.photo_points = []
+    if "photo_pending" not in st.session_state:
+        st.session_state.photo_pending = []
+    if "photo_last_click" not in st.session_state:
+        st.session_state.photo_last_click = None
+    if "photo_sampled_color" not in st.session_state:
+        st.session_state.photo_sampled_color = None
+    if "photo_base_img" not in st.session_state:
+        st.session_state.photo_base_img = None  # cached PIL Image
+
+    # Load session option — available even without an image
+    saved_work = load_json("photo_work.json", default={"sessions": {}})
+    session_names = list(saved_work["sessions"].keys())
+    if session_names and st.session_state.photo_base_img is None:
+        st.markdown("**Or load a previous session:**")
+        load_cols = st.columns([2, 1])
+        with load_cols[0]:
+            quick_load_sel = st.selectbox("Session", session_names,
+                                          key="photo_quick_load")
+        with load_cols[1]:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Load Session", key="quick_load_btn"):
+                data = saved_work["sessions"][quick_load_sel]
+                if "image_b64" in data:
+                    img_bytes = base64.b64decode(data["image_b64"])
+                    st.session_state.photo_base_img = Image.open(
+                        io.BytesIO(img_bytes)).convert("RGBA")
+                st.session_state.photo_fills = data.get("fills", [])
+                st.session_state.photo_pending = [
+                    [tuple(p) for p in poly]
+                    for poly in data.get("pending", [])
+                ]
+                st.session_state.photo_points = data.get("points", [])
+                st.session_state.photo_last_click = None
+                st.rerun()
+        st.markdown("---")
+
     uploaded = st.file_uploader("Drag & drop or browse", type=["png", "jpg", "jpeg"])
     if uploaded:
         # Load and resize image to fit canvas
-        base_img = Image.open(uploaded).convert("RGBA")
+        new_img = Image.open(uploaded).convert("RGBA")
         MAX_W = 800
-        w, h = base_img.size
+        w, h = new_img.size
         if w > MAX_W:
             ratio = MAX_W / w
-            base_img = base_img.resize((MAX_W, int(h * ratio)), Image.LANCZOS)
+            new_img = new_img.resize((MAX_W, int(h * ratio)), Image.LANCZOS)
+        st.session_state.photo_base_img = new_img
 
-        # Session state
-        if "photo_fills" not in st.session_state:
-            st.session_state.photo_fills = []      # applied fills
-        if "photo_points" not in st.session_state:
-            st.session_state.photo_points = []      # current polygon vertices
-        if "photo_pending" not in st.session_state:
-            st.session_state.photo_pending = []     # closed but unfilled polygons
-        if "photo_last_click" not in st.session_state:
-            st.session_state.photo_last_click = None  # track processed clicks
-        if "photo_sampled_color" not in st.session_state:
-            st.session_state.photo_sampled_color = None  # RGB tuple for color replace
+    base_img = st.session_state.photo_base_img
+    if base_img is not None:
 
         # Build composited image from applied fills
         def _composite(img):
@@ -310,7 +345,6 @@ else:
             # Save / Load work
             st.markdown("---")
             st.subheader("Save / Load Work")
-            saved_work = load_json("photo_work.json", default={"sessions": {}})
             session_name = st.text_input("Session name", key="photo_session_name")
             save_work_btn = st.button("Save Current Work")
 
@@ -444,8 +478,11 @@ else:
             save_json("saved_polygons.json", saved_polys)
             st.rerun()
 
-        # Save current work
+        # Save current work (including image)
         if save_work_btn and session_name:
+            img_buf = io.BytesIO()
+            base_img.save(img_buf, format="PNG")
+            img_b64 = base64.b64encode(img_buf.getvalue()).decode("ascii")
             saved_work["sessions"][session_name] = {
                 "fills": st.session_state.photo_fills,
                 "pending": [
@@ -453,6 +490,7 @@ else:
                     for poly in st.session_state.photo_pending
                 ],
                 "points": st.session_state.photo_points,
+                "image_b64": img_b64,
             }
             save_json("photo_work.json", saved_work)
             st.success(f"Saved '{session_name}'!")
@@ -462,6 +500,10 @@ else:
         # Load saved work
         if load_work_btn:
             data = saved_work["sessions"][load_sel]
+            if "image_b64" in data:
+                img_bytes = base64.b64decode(data["image_b64"])
+                st.session_state.photo_base_img = Image.open(
+                    io.BytesIO(img_bytes)).convert("RGBA")
             st.session_state.photo_fills = data.get("fills", [])
             st.session_state.photo_pending = [
                 [tuple(p) for p in poly]
