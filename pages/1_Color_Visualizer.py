@@ -91,7 +91,7 @@ if base_img is not None:
         display = img.copy()
         draw = ImageDraw.Draw(display)
 
-        tool = st.session_state.get("photo_tool", "Polygon")
+        tool = st.session_state.get("photo_tool", "Color Replace")
 
         # Color replace preview highlight
         if (tool == "Color Replace"
@@ -204,10 +204,10 @@ if base_img is not None:
 
         st.markdown("---")
         st.subheader("Tool")
-        st.radio("Tool", ["Polygon", "Color Replace"],
+        st.radio("Tool", ["Color Replace", "Polygon"],
                  key="photo_tool", horizontal=True)
 
-        tool = st.session_state.get("photo_tool", "Polygon")
+        tool = st.session_state.get("photo_tool", "Color Replace")
 
         n_pts = len(st.session_state.photo_points)
         n_pending = len(st.session_state.photo_pending)
