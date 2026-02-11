@@ -83,6 +83,28 @@ if picked:
             unsafe_allow_html=True,
         )
 
+# ── Add custom color ──
+st.markdown("---")
+st.subheader("Add Custom Color")
+add_cols = st.columns([1, 2, 1])
+with add_cols[0]:
+    custom_hex = st.color_picker("Color", "#4488CC", key="custom_add_hex")
+with add_cols[1]:
+    custom_name = st.text_input("Color name", key="custom_add_name",
+                                placeholder="e.g. Sky Blue")
+with add_cols[2]:
+    st.markdown("<br>", unsafe_allow_html=True)
+    cur_len = len(st.session_state.get("current_palette", []))
+    if st.button("Add to Palette", disabled=(cur_len >= 20)):
+        if "current_palette" not in st.session_state:
+            st.session_state.current_palette = []
+        name = custom_name.strip() if custom_name.strip() else custom_hex
+        if len(st.session_state.current_palette) < 20:
+            st.session_state.current_palette.append(
+                {"name": name, "hex": custom_hex, "brand": "Custom"}
+            )
+            st.rerun()
+
 # ── Current palette ──
 st.markdown("---")
 st.subheader("Current Palette")
