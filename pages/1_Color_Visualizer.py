@@ -66,25 +66,32 @@ if uploaded:
 base_img = st.session_state.photo_base_img
 if base_img is not None:
 
-    # Build composited image from applied fills
+    # Build composited image from applied fills (each fill applied sequentially
+    # so that later fills see the result of earlier ones)
     def _composite(img):
-        result = img.copy()
-        overlay = Image.new("RGBA", result.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-        base_arr = np.array(img)[:, :, :3].astype(np.float64)
-        overlay_arr = np.array(overlay)
+        result_arr = np.array(img.copy())
         for fill in st.session_state.photo_fills:
             if fill.get("type") == "color_replace":
+                current_rgb = result_arr[:, :, :3].astype(np.float64)
                 sampled = np.array(fill["sampled_rgb"], dtype=np.float64)
-                diff = base_arr - sampled
-                dist = np.sqrt(np.sum(diff ** 2, axis=2))
+                dist = np.sqrt(np.sum((current_rgb - sampled) ** 2, axis=2))
                 mask = dist <= fill["tolerance"]
                 r, g, b, a = fill["rgba"]
-                overlay_arr[mask] = [r, g, b, a]
+                alpha = a / 255.0
+                new_rgb = np.array([r, g, b], dtype=np.float64)
+                blended = (new_rgb * alpha + current_rgb * (1 - alpha))
+                mask3 = mask[:, :, np.newaxis]
+                result_arr[:, :, :3] = np.where(
+                    mask3, blended, current_rgb
+                ).astype(np.uint8)
             else:
+                result = Image.fromarray(result_arr, "RGBA")
+                overlay = Image.new("RGBA", result.size, (0, 0, 0, 0))
+                draw = ImageDraw.Draw(overlay)
                 draw.polygon(fill["pts"], fill=tuple(fill["rgba"]))
-        overlay = Image.fromarray(overlay_arr, "RGBA")
-        return Image.alpha_composite(result, overlay)
+                result = Image.alpha_composite(result, overlay)
+                result_arr = np.array(result)
+        return Image.fromarray(result_arr, "RGBA")
 
     # Draw pending polygons and current points as markers
     def _draw_guides(img):
@@ -99,22 +106,25 @@ if base_img is not None:
             tol = st.session_state.get("photo_tolerance", 30)
             sampled = np.array(st.session_state.photo_sampled_color,
                                dtype=np.float64)
-            base_arr = np.array(base_img)[:, :, :3].astype(np.float64)
-            diff = base_arr - sampled
-            dist = np.sqrt(np.sum(diff ** 2, axis=2))
+            img_arr = np.array(img)[:, :, :3].astype(np.float64)
+            dist = np.sqrt(np.sum((img_arr - sampled) ** 2, axis=2))
             mask = dist <= tol
-            # Semi-transparent highlight overlay
-            highlight = Image.new("RGBA", display.size, (0, 0, 0, 0))
-            h_arr = np.array(highlight)
+            # Preview: blend fill color at 40% to show what will be affected
             if fill_color:
                 r_h = int(fill_color[1:3], 16)
                 g_h = int(fill_color[3:5], 16)
                 b_h = int(fill_color[5:7], 16)
             else:
                 r_h, g_h, b_h = 255, 0, 255
-            h_arr[mask] = [r_h, g_h, b_h, 100]
-            highlight = Image.fromarray(h_arr, "RGBA")
-            display = Image.alpha_composite(display, highlight)
+            preview_rgb = np.array([r_h, g_h, b_h], dtype=np.float64)
+            disp_arr = np.array(display)
+            current_rgb = disp_arr[:, :, :3].astype(np.float64)
+            blended = (preview_rgb * 0.4 + current_rgb * 0.6)
+            mask3 = mask[:, :, np.newaxis]
+            disp_arr[:, :, :3] = np.where(
+                mask3, blended, current_rgb
+            ).astype(np.uint8)
+            display = Image.fromarray(disp_arr, "RGBA")
             draw = ImageDraw.Draw(display)
 
         # Draw closed pending polygons as outlines
@@ -308,8 +318,8 @@ if base_img is not None:
         if click_key != st.session_state.photo_last_click:
             st.session_state.photo_last_click = click_key
             if tool == "Color Replace":
-                # Sample pixel color from base image
-                px = base_img.getpixel((coords["x"], coords["y"]))
+                # Sample pixel color from composited image (current appearance)
+                px = composited.getpixel((coords["x"], coords["y"]))
                 st.session_state.photo_sampled_color = (px[0], px[1], px[2])
             else:
                 st.session_state.photo_points.append(list(click_key))
@@ -328,6 +338,7 @@ if base_img is not None:
                 "rgba": [r_c, g_c, b_c, opacity],
             })
             st.session_state.photo_sampled_color = None
+            st.session_state.photo_last_click = None
             st.rerun()
         if clear_sample_btn:
             st.session_state.photo_sampled_color = None
